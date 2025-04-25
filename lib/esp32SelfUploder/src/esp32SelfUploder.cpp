@@ -2,17 +2,10 @@
 #include "esp32SelfUploder.h"
 #include "../../../version.h"
 
-#include <WiFi.h>
-//#include <NetworkClient.h>
-#include <WiFiClient.h>
-#include <WebServer.h>
-#include <ESPmDNS.h>
-#include <HTTPUpdateServer.h>
-#include <Update.h>
-#include <HTTPClient.h>
-#include <WiFiClientSecure.h>
-#include <ArduinoJson.h>
 //#include <ESP32httpUpdate.h>
+#ifndef AUTOUPDATE
+#define AUTOUPDATE 0  // 기본값은 비활성화
+#endif
 
 #ifndef STASSID
 #define STASSID "iptime_mbhong" 
@@ -20,8 +13,6 @@
 #endif
 
 const char *host = "esp32-webupdate";
-const char *ssid = STASSID;
-const char *password = STAPSK;
 
 WebServer httpServer(80);
 HTTPUpdateServer httpUpdater;
@@ -31,7 +22,48 @@ String updateFile_url;
 
 // 정적 함수 추가
 static void taskLoop(void *pvParameters) {
-    ESP32SelfUploder* self = (ESP32SelfUploder*)pvParameters;
+    ESP32SelfUploder* self = (ESP32SelfUploder*)&selfUploder;
+    
+    // WiFi 연결
+    Serial.println("Booting Sketch...");
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.begin(self->ssid, self->password);
+
+    while (WiFi.waitForConnectResult() != WL_CONNECTED) {
+        WiFi.begin(self->ssid, self->password);
+        delay(5000);  // 5초 대기
+        Serial.println("WiFi failed, retrying.");
+    }
+
+    Serial.println("WiFi connected");
+    Serial.println(WiFi.localIP());
+    Serial.println(WiFi.subnetMask());
+    Serial.println(WiFi.gatewayIP());
+    Serial.println(WiFi.dnsIP());
+
+    if (MDNS.begin(host)) {
+        Serial.println("mDNS responder started");
+    }
+
+    // 버전 체크
+    #if AUTOUPDATE == 1
+    if (self->checkNewVersion(self->update_url)) {
+        Serial.println("New version available!");
+        if (self->tryAutoUpdate(updateFile_url.c_str())) {
+            return;
+        }
+    } else {
+        Serial.println("Already on latest version");
+    }
+    #endif
+
+    // 웹 인터페이스 시작
+    self->httpUpdater.setup(&self->httpServer);
+    self->httpServer.begin();
+
+    MDNS.addService("http", "tcp", 80);
+    Serial.printf("HTTPUpdateServer ready! Open http://%s.local/update in your browser\n", host);
+
     while(1) {
         self->loop();
         delay(1);
@@ -45,6 +77,7 @@ void printProgress(size_t prg, size_t sz) {
         lastProgress = progress;
         Serial.printf("Progress: %d%%  ", progress);
         Serial.printf("Bytes: %d/%d\n", prg, sz);
+        digitalWrite(selfUploder.ledPin, !digitalRead(selfUploder.ledPin) );
     }
 }
 
@@ -185,60 +218,29 @@ bool ESP32SelfUploder::checkNewVersion(const char* update_url) {
     http.end();
     return false;
 }
-void ESP32SelfUploder::begin(const char* update_url) {
-    // EEPROM에서 현재 버전 정보 로드
-    
+void ESP32SelfUploder::begin(const char* ssid, const char* password, const char* update_url) {
+    strncpy(this->ssid, ssid, sizeof(this->ssid) - 1);
+    this->ssid[sizeof(this->ssid) - 1] = '\0';
+    strncpy(this->password, password, sizeof(this->password) - 1);
+    this->password[sizeof(this->password) - 1] = '\0';
+    strncpy(this->update_url, update_url, sizeof(this->update_url) - 1);
+    this->update_url[sizeof(this->update_url) - 1] = '\0';
     Serial.begin(115200);
     Serial.println();
-    Serial.println("Booting Sketch...");
-    WiFi.mode(WIFI_AP_STA);
-    WiFi.begin(ssid, password);
-
-    while (WiFi.waitForConnectResult() != WL_CONNECTED) {
-        WiFi.begin(ssid, password);
-        Serial.println("WiFi failed, retrying.");
-    }
-
-    Serial.println("WiFi connected");
-    Serial.println(WiFi.localIP());
-    Serial.println(WiFi.subnetMask());
-    Serial.println(WiFi.gatewayIP());
-    Serial.println(WiFi.dnsIP());
-
-    if (MDNS.begin(host)) {
-        Serial.println("mDNS responder started");
-    }
-
-    // 버전 정보 URL 구성 (update_url에서 .bin을 .json으로 변경)
-    String version_url = String(update_url);
     
-    // 새 버전 확인
-    if (checkNewVersion(version_url.c_str())) {
-        Serial.println("New version available!");
-        if (tryAutoUpdate(updateFile_url.c_str())) {
-            return;
-        }
-    } else {
-        Serial.println("Already on latest version");
-    }
-
-    // 웹 인터페이스 시작
-    Update.onProgress(printProgress);
-    httpUpdater.setup(&httpServer);
-    httpServer.begin();
-
-    MDNS.addService("http", "tcp", 80);
-    Serial.printf("HTTPUpdateServer ready! Open http://%s.local/update in your browser\n", host);
     xTaskCreate(
         taskLoop,
         "ESP32SelfUploder",
-        4096,
+        8192,
         this,
         5,
         NULL);
 }
 
 void ESP32SelfUploder::loop() {
+    static unsigned long lastCheckTime = 0;
+    const unsigned long CHECK_INTERVAL = 3600000; // 1시간 (밀리초)
+    
     httpServer.handleClient();
     delay(1);
 }
