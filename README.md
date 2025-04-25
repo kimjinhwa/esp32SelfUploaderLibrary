@@ -5,7 +5,8 @@
     SSID : AndroidHotspot1953
     PASS : 87654321
     - update시 LED가 빠르게 깜빡인다.
-```
+
+```csv
 # name,   type, subtype, offset,  size, flags
 nvs,      data, nvs,     0x9000,  0x5000,
 otadata,  data, ota,     0xe000,  0x2000,
@@ -20,10 +21,12 @@ coredump, data, coredump,0x7F0000,0x10000,
     #define 1.0.0 // ....주석...
     과 같이 만든다. 
     - platform.io에 
+
 ```
 build_flags = 
 -DAUTOUPDATE=1
 ```
+
     - selfUploder.begin("https://raw.githubusercontent.com/kimjinhwa/IP-Fineder-For-ESP32/main/dist/poscot52");
     - 이제 C:\DevWork\pythonWork\udpBroadCast\dist\poscot52 에가서 version.json 과 새로운 펌웨어를 넣고. 
     - .\gitversiontag를 실행한다. 
