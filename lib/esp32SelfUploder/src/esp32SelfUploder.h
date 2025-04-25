@@ -4,8 +4,8 @@
 #include <ArduinoJson.h>
 
 struct FirmwareInfo {
-    char latest[10];
-    char filename[10];
+    char latest[100];
+    char filename[100];
 };
 
 class ESP32SelfUploder {

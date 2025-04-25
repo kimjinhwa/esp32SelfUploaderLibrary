@@ -11,6 +11,7 @@
 #include <Update.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
+#include <ArduinoJson.h>
 //#include <ESP32httpUpdate.h>
 
 #ifndef STASSID
@@ -141,7 +142,7 @@ bool ESP32SelfUploder::checkNewVersion(const char* update_url) {
         Serial.println("Received JSON:");
         Serial.println(payload);
  
-        StaticJsonDocument<200> doc;
+        JsonDocument doc;
         DeserializationError error = deserializeJson(doc, payload);
         
         if (!error) {
