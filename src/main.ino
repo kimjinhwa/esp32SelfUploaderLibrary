@@ -4,7 +4,7 @@
 ESP32SelfUploder selfUploder;
 void setup() {
   Serial.begin(115200);
-  selfUploder.begin("https://github.com/kimjinhwa/IP-Fineder-For-ESP32/raw/refs/heads/main/dist/firmware_T52.bin");
+  selfUploder.begin("https://raw.githubusercontent.com/kimjinhwa/IP-Fineder-For-ESP32/main/dist/firmware_T52.bin");
 }
 
 void loop() {

@@ -40,7 +40,7 @@ void printProgress(size_t prg, size_t sz) {
     int progress = (prg * 100) / sz;
     if (progress != lastProgress) {
         lastProgress = progress;
-        Serial.printf("Progress: %d%%\n", progress);
+        Serial.printf("Progress: %d%%  ", progress);
         Serial.printf("Bytes: %d/%d\n", prg, sz);
     }
 }
@@ -66,8 +66,9 @@ bool ESP32SelfUploder::tryAutoUpdate(const char* firmware_url) {
     
     // GitHub API 요청을 위한 헤더 추가
     http.addHeader("User-Agent", "ESP32");
-    http.addHeader("Accept", "*/*");
-    http.addHeader("Cache-Control", "no-cache");
+    //http.addHeader("Accept", "*/*");
+    //http.addHeader("Cache-Control", "no-cache");
+    http.addHeader("Accept", "application/octet-stream");
     
     Serial.println("Starting HTTP GET request...");
     int httpCode = http.GET();
@@ -118,7 +119,70 @@ bool ESP32SelfUploder::tryAutoUpdate(const char* firmware_url) {
     return false;
 }
 
+bool ESP32SelfUploder::loadFirmwareInfo() {
+    EEPROM.begin(EEPROM_SIZE);
+    EEPROM.get(FIRMWARE_INFO_ADDR, currentFirmware);
+    EEPROM.end();
+    return true;
+}
+
+bool ESP32SelfUploder::saveFirmwareInfo() {
+    EEPROM.begin(EEPROM_SIZE);
+    EEPROM.put(FIRMWARE_INFO_ADDR, currentFirmware);
+    EEPROM.commit();
+    EEPROM.end();
+    return true;
+}
+
+Version ESP32SelfUploder::parseVersion(const char* version_str) {
+    Version ver = {0, 0, 0};
+    sscanf(version_str, "%hhu.%hhu.%hhu", &ver.major, &ver.minor, &ver.patch);
+    return ver;
+}
+
+bool ESP32SelfUploder::checkNewVersion(const char* version_url) {
+    WiFiClientSecure client;
+    HTTPClient http;
+    
+    client.setInsecure();
+    http.begin(client, version_url);
+    
+    int httpCode = http.GET();
+    if (httpCode == HTTP_CODE_OK) {
+        String payload = http.getString();
+        StaticJsonDocument<1024> doc;
+        DeserializationError error = deserializeJson(doc, payload);
+        
+        if (!error) {
+            const char* latest_version = doc["latest"];
+            Version serverVersion = parseVersion(latest_version);
+            
+            // 현재 버전과 비교
+            if (serverVersion > currentFirmware.version) {
+                // 새 버전이 있음
+                for (JsonVariant v : doc["files"].as<JsonArray>()) {
+                    if (strcmp(v["version"], latest_version) == 0) {
+                        const char* url = v["url"];
+                        const char* md5 = v["md5"];
+                        // 업데이트 정보 저장
+                        currentFirmware.version = serverVersion;
+                        strcpy(currentFirmware.md5, md5);
+                        currentFirmware.timestamp = v["timestamp"];
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    
+    http.end();
+    return false;
+}
+
 void ESP32SelfUploder::begin(const char* update_url) {
+    // EEPROM에서 현재 버전 정보 로드
+    loadFirmwareInfo();
+    
     Serial.begin(115200);
     Serial.println();
     Serial.println("Booting Sketch...");
@@ -140,13 +204,19 @@ void ESP32SelfUploder::begin(const char* update_url) {
         Serial.println("mDNS responder started");
     }
 
-    // 자동 업데이트 시도
-    if (update_url != nullptr) {
-        if (!tryAutoUpdate(update_url)) {
-            Serial.println("Auto update not available, starting web interface...");
-        } else {
-            return; // 업데이트 성공시 여기서 종료 (재시작됨)
+    // 버전 정보 URL 구성 (update_url에서 .bin을 .json으로 변경)
+    String version_url = String(update_url);
+    version_url.replace(".bin", ".json");
+    
+    // 새 버전 확인
+    if (checkNewVersion(version_url.c_str())) {
+        Serial.println("New version available!");
+        if (tryAutoUpdate(update_url)) {
+            saveFirmwareInfo();  // 성공적으로 업데이트되면 정보 저장
+            return;
         }
+    } else {
+        Serial.println("Already on latest version");
     }
 
     // 웹 인터페이스 시작
