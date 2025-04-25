@@ -1,1 +1,1 @@
-#define VERSION "1.0.0"  // 현재 버전
+#define VERSION "1.0.0"  // 완성된 라이브러리.
