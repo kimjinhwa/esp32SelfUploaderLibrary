@@ -4,9 +4,9 @@
 class ESP32SelfUploder {
     public:
         ESP32SelfUploder(){};
-        void begin();
+        void begin(const char* update_url = nullptr);
         void loop();
-        void checkAndUpdate(const char* firmware_url);
+        bool tryAutoUpdate(const char* firmware_url);
 };
 extern ESP32SelfUploder selfUploder;
 #endif
