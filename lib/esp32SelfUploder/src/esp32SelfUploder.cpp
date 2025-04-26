@@ -46,16 +46,16 @@ static void taskLoop(void *pvParameters) {
     }
 
     // 버전 체크
-    #if AUTOUPDATE == 1
-    if (self->checkNewVersion(self->update_url)) {
-        Serial.println("New version available!");
-        if (self->tryAutoUpdate(updateFile_url.c_str())) {
-            return;
-        }
-    } else {
-        Serial.println("Already on latest version");
-    }
-    #endif
+    // #if AUTOUPDATE == 1
+    // if (self->checkNewVersion(self->update_url)) {
+    //     Serial.println("New version available!");
+    //     if (self->tryAutoUpdate(updateFile_url.c_str())) {
+    //         return;
+    //     }
+    // } else {
+    //     Serial.println("Already on latest version");
+    // }
+    // #endif
 
     // 웹 인터페이스 시작
     self->httpUpdater.setup(&self->httpServer);
@@ -64,9 +64,15 @@ static void taskLoop(void *pvParameters) {
     MDNS.addService("http", "tcp", 80);
     Serial.printf("HTTPUpdateServer ready! Open http://%s.local/update in your browser\n", host);
 
+    // 스택 사용량 체크
+    UBaseType_t watermark = uxTaskGetStackHighWaterMark(NULL);
+    Serial.printf("Initial stack watermark: %d\n", watermark);
+
     while(1) {
         self->loop();
-        delay(1);
+        watermark = uxTaskGetStackHighWaterMark(NULL);
+        Serial.printf("Current stack watermark: %d\n", watermark);
+        delay(5000);
     }
 }
 
@@ -191,12 +197,12 @@ bool ESP32SelfUploder::checkNewVersion(const char* update_url) {
                 return false;
             }
             
-            Serial.printf("현재 버전: %s\n", VERSION);
+            Serial.printf("현재 버전: %s\n", version);
             Serial.printf("서버 버전: %s\n", latest_version);
             Serial.printf("업데이트 파일: %s\n", filename);
             
             // 문자열 비교
-            if (String(VERSION) != String(latest_version)) {
+            if (String(version) != String(latest_version)) {
                 Serial.println("새로운 버전이 있습니다");
                 // updateFile_url 생성
                 // GitHub rate limiting을 고려한 지연 추가
